@@ -1,0 +1,86 @@
+#
+# Immich Stack fuer OpenMediaVault (OMV Compose) auf Raspberry Pi 5
+#
+# Basis: offizielle Datei
+#   https://github.com/immich-app/immich/releases/latest/download/docker-compose.yml
+#
+# UNTERSCHIED zur offiziellen Datei:
+#   Die offizielle Datei uebergibt die DB-Zugangsdaten an "immich-server" ueber
+#       env_file:
+#         - .env
+#   Das funktioniert nur, wenn genau neben dieser Compose-Datei eine Datei
+#   namens ".env" liegt. OMV Compose speichert seinen Environment-Block je nach
+#   Version unter einem anderen Namen und uebergibt ihn nur als "--env-file"
+#   (das macht ausschliesslich ${...}-Substitution, es landet NICHTS im Container).
+#
+#   Deshalb werden die Variablen hier explizit ueber "environment:" gesetzt.
+#   Das ist unabhaengig vom Dateinamen des OMV-Env-Files und damit robust.
+#
+# WICHTIG: Ohne DB_PASSWORD im Container faellt immich-server auf seinen
+# eingebauten Default "postgres" zurueck -> "password authentication failed
+# for user postgres" (SQLSTATE 28P01).
+#
+
+name: immich
+
+services:
+  immich-server:
+    container_name: immich_server
+    image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-release}
+    volumes:
+      # Diese Zeile nicht editieren - Pfad ueber UPLOAD_LOCATION im Env-Block setzen
+      - ${UPLOAD_LOCATION}:/data
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      DB_HOSTNAME: database
+      DB_PORT: 5432
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_DATABASE_NAME: ${DB_DATABASE_NAME}
+      REDIS_HOSTNAME: redis
+      TZ: ${TZ}
+    ports:
+      - '2283:2283'
+    depends_on:
+      - redis
+      - database
+    restart: always
+    healthcheck:
+      disable: false
+
+  immich-machine-learning:
+    container_name: immich_machine_learning
+    image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION:-release}
+    volumes:
+      - model-cache:/cache
+    environment:
+      TZ: ${TZ}
+    restart: always
+    healthcheck:
+      disable: false
+
+  redis:
+    container_name: immich_redis
+    image: docker.io/valkey/valkey:9@sha256:8e8d64b405ce18f41b8e5ee20aa4687a8ed0022d1298f2ce31cdcf3a76e09411
+    healthcheck:
+      test: redis-cli ping || exit 1
+    restart: always
+
+  database:
+    container_name: immich_postgres
+    image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0@sha256:bcf63357191b76a916ae5eb93464d65c07511da41e3bf7a8416db519b40b1c23
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_DB: ${DB_DATABASE_NAME}
+      POSTGRES_INITDB_ARGS: '--data-checksums'
+    volumes:
+      # Diese Zeile nicht editieren - Pfad ueber DB_DATA_LOCATION im Env-Block setzen
+      - ${DB_DATA_LOCATION}:/var/lib/postgresql/data
+    shm_size: 128mb
+    restart: always
+    healthcheck:
+      disable: false
+
+volumes:
+  model-cache:
