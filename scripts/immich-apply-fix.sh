@@ -82,7 +82,7 @@ step "2. Aktuelle Konfiguration (Passwort maskiert)"
 echo "----- $(basename "$BASEFILE") -----"
 # Maskiert nur echte Werte. Variablen-Referenzen wie ${DB_PASSWORD} bleiben
 # lesbar - sie sind kein Geheimnis und ihr Anblick ist diagnostisch wichtig.
-sed -E '/(PASSWORD|SECRET|TOKEN|KEY)[A-Za-z_]*[=:][[:space:]]*\$/!s/((PASSWORD|SECRET|TOKEN|KEY)[A-Za-z_]*[=:][[:space:]]*)[^[:space:]].*/\1<MASKIERT>/I' "$BASEFILE"
+sed -E '/[A-Z_]*(PASSWORD|SECRET|TOKEN|API_KEY)[A-Z_]*:[[:space:]]*\$/!s/([A-Z_]*(PASSWORD|SECRET|TOKEN|API_KEY)[A-Z_]*:[[:space:]]*)[^[:space:]].*/\1<MASKIERT>/' "$BASEFILE"
 echo "----- $(basename "$OVERRIDE") -----"
 [ -f "$OVERRIDE" ] && cat "$OVERRIDE" || echo "(existiert noch nicht)"
 echo "----- $(basename "$ENVFILE") (maskiert) -----"
@@ -249,7 +249,19 @@ if [ "$DRYRUN" = 0 ]; then
   fi
 fi
 
-cat <<EOF
+if grep -q 'DB_PASSWORD' "$BASEFILE" 2>/dev/null; then
+  cat <<EOF
+
+== Dauerhaft verankert ==
+Der environment:-Block steht bereits in der von OMV verwalteten Datei
+$(basename "$BASEFILE") und uebersteht damit jedes Deployment. Die
+compose.override.yml ist nur noch Redundanz - wenn OMV sie ueberschreibt,
+aendert das nichts.
+
+Sicherungen dieses Laufs: *.bak-$TS im Stack-Verzeichnis.
+EOF
+else
+  cat <<EOF
 
 == Damit es dauerhaft bleibt ==
 OMV verwaltet die Compose-Dateien und kann sie beim naechsten Speichern
@@ -268,3 +280,4 @@ Im Service immich-server, auf der Ebene von volumes:/ports::
 
 Sicherungen dieses Laufs: *.bak-$TS im Stack-Verzeichnis.
 EOF
+fi
