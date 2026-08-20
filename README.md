@@ -10,6 +10,7 @@ Selbstgehostete Alternativen zu kommerziellen Cloud-Diensten.
 | [`docs/immich-omv-rpi5/iphone-speicher-freigeben.md`](docs/immich-omv-rpi5/iphone-speicher-freigeben.md) | iPhone-Speicher freigeben, Originale bleiben auf dem NAS |
 | [`compose/immich/docker-compose.yml`](compose/immich/docker-compose.yml) | Für OMV Compose korrigierte Immich-Compose-Datei |
 | [`compose/immich/example.env`](compose/immich/example.env) | Vorlage für den OMV-Environment-Block (ohne Geheimnisse) |
+| [`scripts/immich-apply-fix.sh`](scripts/immich-apply-fix.sh) | Komplettreparatur in einem Durchgang: Konfiguration zeigen, sichern, `environment:`-Block per YAML-Merge ergänzen, Passwort synchronisieren, neu erstellen, verifizieren |
 | [`scripts/immich-diagnose.sh`](scripts/immich-diagnose.sh) | Nur-Lesen-Diagnose, gibt keine Passwörter aus |
 | [`scripts/immich-fix-db-password.sh`](scripts/immich-fix-db-password.sh) | Synchronisiert das Postgres-Passwort und erstellt nur `immich-server` neu |
 | [`scripts/immich-move-db-dir.sh`](scripts/immich-move-db-dir.sh) | Verschiebt das Postgres-Datenverzeichnis aus `UPLOAD_LOCATION` heraus (nur `mv`) |

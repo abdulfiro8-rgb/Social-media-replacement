@@ -120,9 +120,12 @@ fi
 
 step "4. Passwort gegen die Datenbank testen"
 if [ "$DRYRUN" = 0 ]; then
+  # Test ueber die Container-IP, nicht ueber 127.0.0.1: fuer Loopback steht in
+  # der pg_hba.conf des Images ein "trust"-Eintrag, der das Passwort ignoriert.
   out=$(printf '%s\n' "$ENV_PW" | $DOCKER exec -i immich_postgres sh -c '
       read -r PGPASSWORD; export PGPASSWORD
-      psql -h 127.0.0.1 -U "$1" -d "$2" -tAc "select 1" 2>&1' sh "$ENV_USER" "$ENV_DB")
+      IP=$(hostname -i 2>/dev/null | cut -d" " -f1); [ -n "$IP" ] || IP=database
+      psql -h "$IP" -U "$1" -d "$2" -tAc "select 1" 2>&1' sh "$ENV_USER" "$ENV_DB")
   if [ "$(printf '%s' "$out" | tr -d '[:space:]')" = "1" ]; then
     ok "Anmeldung an der Datenbank funktioniert."
   else

@@ -143,9 +143,14 @@ if $DOCKER inspect immich_postgres >/dev/null 2>&1; then
   TESTPW="${SRV_PW:-postgres}"
   TESTUSER="${SRV_USER:-postgres}"
   TESTDB="${SRV_DB:-immich}"
+  # WICHTIG: NICHT ueber 127.0.0.1 testen. Die pg_hba.conf des Postgres-Images
+  # hat fuer 127.0.0.1/32 einen "trust"-Eintrag, der vor der scram-Regel greift
+  # - ein Test ueber Loopback ignoriert das Passwort und meldet faelschlich Erfolg.
+  # Deshalb ueber die Container-IP im Docker-Netz, genau wie immich_server.
   out=$(printf '%s\n' "$TESTPW" | $DOCKER exec -i immich_postgres sh -c '
       read -r PGPASSWORD; export PGPASSWORD
-      psql -h 127.0.0.1 -U "$1" -d "$2" -tAc "select 1" 2>&1' sh "$TESTUSER" "$TESTDB")
+      IP=$(hostname -i 2>/dev/null | cut -d" " -f1); [ -n "$IP" ] || IP=database
+      psql -h "$IP" -U "$1" -d "$2" -tAc "select 1" 2>&1' sh "$TESTUSER" "$TESTDB")
   if [ "$(printf '%s' "$out" | tr -d '[:space:]')" = "1" ]; then
     c_ok "Postgres akzeptiert das Passwort von immich_server."
     c_inf "=> Das DB-Passwort ist NICHT (mehr) die Ursache."

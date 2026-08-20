@@ -117,11 +117,55 @@ und prüft zusätzlich Mounts, Rechte, Port 2283 und die Logs.
 
 ---
 
+## 2b. Fallstrick beim Nachtesten: `127.0.0.1` lügt
+
+Ein Anmeldetest *innerhalb* des Postgres-Containers über `127.0.0.1` beweist
+nichts. Das offizielle Postgres-Image erzeugt eine `pg_hba.conf`, in der
+`initdb` zuerst Loopback-Regeln schreibt und der Docker-Entrypoint danach
+`host all all all scram-sha-256` anhängt:
+
+```
+host    all   all   127.0.0.1/32   trust            <-- greift zuerst
+host    all   all   ::1/128        trust
+host    all   all   all            scram-sha-256    <-- gilt für immich_server
+```
+
+`pg_hba` ist first-match-wins. Ein `psql -h 127.0.0.1` landet auf `trust` und
+ist auch mit falschem Passwort erfolgreich. `immich_server` verbindet sich aus
+einem anderen Container über das Docker-Netz und landet auf `scram-sha-256`.
+
+Deshalb testen die Skripte über die Container-IP:
+
+```bash
+printf '%s\n' "$PW" | sudo docker exec -i immich_postgres sh -c '
+  read -r PGPASSWORD; export PGPASSWORD
+  IP=$(hostname -i | cut -d" " -f1)
+  psql -h "$IP" -U postgres -d immich -tAc "select 1"'
+```
+
 ## 3. Reparatur
 
 > Keine Datenbank, kein Volume und kein Verzeichnis wird dabei angefasst.
 > Kein `down -v`, kein `rm -rf`, keine rekursiven Rechteänderungen,
 > keine Änderung an `mtb-bot` oder `twingate-neon-mosquito`.
+
+### Der schnelle Weg: ein Befehl
+
+```bash
+sudo ./scripts/immich-apply-fix.sh --dry-run   # zeigt Konfiguration und Plan
+sudo ./scripts/immich-apply-fix.sh             # führt aus
+```
+
+Das Skript zeigt die aktuelle Konfiguration (Passwort maskiert), sichert die
+Compose-Dateien mit Zeitstempel, trägt den fehlenden `environment:`-Block per
+echtem YAML-Merge in die `compose.override.yml` ein (vorhandene Einträge
+bleiben erhalten — OMV lädt diese Datei ohnehin bereits mit), validiert mit
+`docker compose config`, setzt das Rollenpasswort, prüft die Anmeldung über
+das Docker-Netz und erstellt nur `immich-server` und
+`immich-machine-learning` neu (`--no-deps`, `database` und `redis` bleiben
+unberührt).
+
+Die Schritte einzeln, falls du es von Hand machen willst:
 
 ### Schritt 1 — Compose-Datei korrigieren
 
@@ -159,6 +203,13 @@ unabhängig davon, weil er die bereits substituierten `${...}`-Werte benutzt.
 Wenn im Stack-Verzeichnis tatsächlich eine `.env` liegt (das Diagnose-Skript
 zeigt es in Abschnitt 2 der Ausgabe), ist `env_file: - .env` gleichwertig —
 dann aber bitte **den ganzen Block** einfügen, nicht nur die Listenzeile.
+
+OMV Compose legt neben der Stack-Datei (`immich.yml`) auch eine
+`compose.override.yml` an und lädt beide. Der `environment:`-Block kann
+deshalb auch dort stehen — das ist der Weg, den `immich-apply-fix.sh` nimmt,
+weil er die von OMV verwaltete Hauptdatei nicht anfasst. Damit OMV die
+Änderung beim nächsten Speichern nicht überschreibt, sollte der Block
+zusätzlich einmal im Webinterface hinterlegt werden.
 
 ### Schritt 2 — Passwort synchronisieren und Container neu erstellen
 
