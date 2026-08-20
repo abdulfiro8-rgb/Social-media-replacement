@@ -321,6 +321,55 @@ Erst danach überlebt die Reparatur ein OMV-Deployment.
 
 ---
 
+## 3c. Vorfall: leere Datenbank nach dem Verschieben des DB-Verzeichnisses
+
+Beim Verschieben von `DB_DATA_LOCATION` wurde der Stack hochgefahren, **bevor**
+die Variable auf den neuen Pfad zeigte. Die Folge:
+
+1. `mv` verschob die Daten nach `.../nascld/immich-db`.
+2. Der Stack startete noch mit `DB_DATA_LOCATION=.../Immich/postgres`.
+3. Docker fand den Pfad nicht und legte ihn als **leeres Verzeichnis** an —
+   das ist Standardverhalten bei Bind-Mounts, kein Fehler.
+4. Postgres initialisierte darin per `initdb` eine **neue, leere** Datenbank.
+5. Alle Container meldeten `healthy`, die API antwortete mit 200 — während die
+   echten Daten unbenutzt daneben lagen.
+
+Ein Fehler, der sich als Erfolg tarnt. Erkennbar an den Zeitstempeln:
+
+```bash
+stat -c '%y %n' /srv/.../nascld/Immich/postgres/PG_VERSION                 /srv/.../nascld/immich-db/PG_VERSION
+docker inspect immich_postgres   --format '{{range .Mounts}}{{.Source}}{{end}}'
+docker exec -u postgres immich_postgres psql -tAc 'select pg_postmaster_start_time()'
+```
+
+Ein `PG_VERSION` mit einem Zeitstempel von *nach* dem Verschieben ist die
+frische, leere Instanz.
+
+### Reparatur
+
+```bash
+sudo ./scripts/immich-fix-wrong-dbdir.sh --real /srv/.../nascld/immich-db
+```
+
+Das Skript stoppt die Container, parkt die leere Instanz per `mv` zur Seite
+(löscht nichts) und setzt eine Sperre am alten Pfad. Danach in dieser
+Reihenfolge: `DB_DATA_LOCATION` in OMV setzen → Sperre löschen → `Up` →
+`immich-apply-fix.sh`.
+
+### Warum das jetzt nicht mehr passieren kann
+
+Beide Skripte hinterlassen am alten Pfad eine **Datei** statt eines
+Verzeichnisses. Docker kann eine Datei nicht auf das Verzeichnis
+`/var/lib/postgresql/data` mounten und bricht den Start mit einer klaren
+Fehlermeldung ab. Aus einem stillen Datenverlust wird ein lauter Fehlschlag —
+die Sperre wird erst entfernt, wenn die Konfiguration stimmt.
+
+Die allgemeine Lehre: bei Bind-Mounts ist ein fehlender Pfad kein Fehler,
+sondern eine Einladung. Wer ein Datenverzeichnis verschiebt, ändert **zuerst**
+die Konfiguration und **dann** die Daten — oder verriegelt den alten Pfad.
+
+---
+
 ## 4. Verifikation
 
 ```bash

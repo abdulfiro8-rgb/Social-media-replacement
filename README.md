@@ -13,7 +13,8 @@ Selbstgehostete Alternativen zu kommerziellen Cloud-Diensten.
 | [`scripts/immich-apply-fix.sh`](scripts/immich-apply-fix.sh) | Komplettreparatur in einem Durchgang: Konfiguration zeigen, sichern, `environment:`-Block per YAML-Merge ergänzen, Passwort synchronisieren, neu erstellen, verifizieren |
 | [`scripts/immich-diagnose.sh`](scripts/immich-diagnose.sh) | Nur-Lesen-Diagnose, gibt keine Passwörter aus |
 | [`scripts/immich-fix-db-password.sh`](scripts/immich-fix-db-password.sh) | Synchronisiert das Postgres-Passwort und erstellt nur `immich-server` neu |
-| [`scripts/immich-move-db-dir.sh`](scripts/immich-move-db-dir.sh) | Verschiebt das Postgres-Datenverzeichnis aus `UPLOAD_LOCATION` heraus (nur `mv`) |
+| [`scripts/immich-move-db-dir.sh`](scripts/immich-move-db-dir.sh) | Verschiebt das Postgres-Datenverzeichnis aus `UPLOAD_LOCATION` heraus (nur `mv`) und verriegelt den alten Pfad |
+| [`scripts/immich-fix-wrong-dbdir.sh`](scripts/immich-fix-wrong-dbdir.sh) | Repariert eine versehentlich angelegte leere Datenbank nach einem Verschieben; parkt sie zur Seite statt sie zu löschen |
 
 Keine der Skripte löscht Datenbanken, Volumes oder Verzeichnisse, und keines
 verändert andere Container.

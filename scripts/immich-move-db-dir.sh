@@ -72,13 +72,55 @@ mv -T -- "$SRC" "$TARGET" || die "mv fehlgeschlagen - es wurde nichts geloescht.
 ok "Verschoben nach $TARGET"
 stat -c '  %A %U:%G %n' "$TARGET"
 
+# ---------------------------------------------------------------------------
+# Sperre gegen einen verfruehten Start.
+#
+# Wird der Stack hochgefahren, bevor DB_DATA_LOCATION auf den neuen Pfad zeigt,
+# legt Docker den alten Pfad stillschweigend als leeres Verzeichnis an und
+# Postgres initialisiert darin eine neue, leere Datenbank. Der Stack ist danach
+# "healthy", die echten Daten liegen unbenutzt daneben - ein Fehler, der sich
+# als Erfolg tarnt.
+#
+# Deshalb steht am alten Pfad jetzt eine DATEI statt eines Verzeichnisses.
+# Docker kann eine Datei nicht auf das Verzeichnis /var/lib/postgresql/data
+# mounten und bricht den Start mit einer klaren Fehlermeldung ab. Lauter
+# Fehlschlag statt stiller Datenverlust.
+# ---------------------------------------------------------------------------
+cat > "$SRC" <<GUARD
+Diese Datei ist eine absichtliche Sperre von immich-move-db-dir.sh.
+
+Das Postgres-Datenverzeichnis liegt jetzt unter:
+    $TARGET
+
+Solange diese Datei existiert, kann der Immich-Stack nicht mit dem alten,
+falschen Pfad starten - das verhindert, dass Postgres hier versehentlich eine
+neue, leere Datenbank anlegt.
+
+So geht es weiter:
+  1. Im OMV-Webinterface unter Services > Compose > Files > immich >
+     Environment setzen:  DB_DATA_LOCATION=$TARGET
+  2. Diese Datei loeschen:  sudo rm -f "$SRC"
+  3. Den Stack 'Up' schalten.
+GUARD
+chmod 444 "$SRC"
+ok "Sperre am alten Pfad gesetzt (verhindert einen Start mit falschem Pfad)."
+
 cat <<EOF
 
-NAECHSTER SCHRITT (manuell, im OMV-Webinterface):
-  Services > Compose > Files > immich > Environment:
-      DB_DATA_LOCATION=$TARGET
-  speichern, danach den Stack 'Up' schalten.
+NAECHSTE SCHRITTE - GENAU IN DIESER REIHENFOLGE:
 
-Der alte Pfad $SRC existiert nicht mehr als Verzeichnis - die Daten liegen
-vollstaendig unter $TARGET. Es wurde nichts geloescht.
+  1. OMV-Webinterface: Services > Compose > Files > immich > Environment
+         DB_DATA_LOCATION=$TARGET
+     speichern.
+
+  2. Sperre entfernen:
+         sudo rm -f "$SRC"
+
+  3. Erst jetzt den Stack 'Up' schalten.
+
+Wird Schritt 3 vor Schritt 1 ausgefuehrt, scheitert der Start des
+Postgres-Containers mit einer Mount-Fehlermeldung. Das ist beabsichtigt und
+schuetzt die Daten - dann einfach bei Schritt 1 weitermachen.
+
+Die Daten liegen vollstaendig unter $TARGET. Es wurde nichts geloescht.
 EOF
