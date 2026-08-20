@@ -385,6 +385,43 @@ ist für das Postgres-Datenverzeichnis nicht unterstützt.
 
 ---
 
+## 6b. „Nicht erreichbar" ist meistens der Client, nicht der Server
+
+Am 2026-08-20 waren OMV (`:80`) und Immich (`:2283`) vom Windows-Rechner aus
+nicht erreichbar (`ERR_CONNECTION_TIMED_OUT`), während auf dem Pi selbst alles
+lief. Ursache: auf dem PC war **NordVPN** verbunden. NordVPN blockiert
+standardmäßig das lokale Netz; die Option heißt je nach Version „LAN
+discovery", „Local network discovery" oder „Invisibility on LAN". Parallel lief
+noch der Twingate-Client und in Opera zusätzlich dessen eingebautes VPN.
+
+Das verräterische Muster: `arp -a` kannte die MAC des Pi, aber `ping` lief in
+den Timeout. ARP arbeitet unterhalb der VPN-Schicht — das Gerät wird also
+gefunden, während jedes IP-Paket in den Tunnel wandert.
+
+Diagnose-Reihenfolge, wenn eine Weboberfläche nicht erreichbar ist:
+
+```bash
+# 1. Auf dem Pi: lebt der Dienst ueberhaupt?
+curl -sI http://localhost | head -1        # 200 OK -> Server ist unschuldig
+sudo ss -lntp | grep -E ':80|:2283'
+```
+
+```powershell
+# 2. Auf dem Client: stimmt der Weg?
+ipconfig                                    # eigenes Subnetz? aktive VPN-Adapter?
+arp -a | findstr 192.168.0                  # sieht der PC den Pi auf L2?
+Find-NetRoute -RemoteIPAddress 192.168.0.125   # welcher Adapter wird benutzt?
+```
+
+Zeigt `Find-NetRoute` als `InterfaceAlias` einen VPN-Adapter (`NordLynx`,
+`Twingate`) statt `Wi-Fi`/`Ethernet`, ist die Ursache gefunden: VPN trennen
+oder dort LAN-Zugriff erlauben.
+
+Dauerhafte Abhilfe: in NordVPN „LAN discovery" aktivieren. Dann bleibt der
+Tunnel für Internetverkehr aktiv, lokale Adressen gehen direkt.
+
+---
+
 ## 7. Offene Nebenbaustellen
 
 * **Twingate-Tokens**: Access- und Refresh-Token wurden früher im Klartext
