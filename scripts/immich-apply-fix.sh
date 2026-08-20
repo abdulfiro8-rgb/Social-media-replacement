@@ -80,11 +80,13 @@ inf "Env-Datei   : $ENVFILE"
 
 step "2. Aktuelle Konfiguration (Passwort maskiert)"
 echo "----- $(basename "$BASEFILE") -----"
-sed -E 's/(PASSWORD[=:][[:space:]]*)[^$][^[:space:]]*/\1<MASKIERT>/I' "$BASEFILE"
+# Maskiert nur echte Werte. Variablen-Referenzen wie ${DB_PASSWORD} bleiben
+# lesbar - sie sind kein Geheimnis und ihr Anblick ist diagnostisch wichtig.
+sed -E '/(PASSWORD|SECRET|TOKEN|KEY)[A-Za-z_]*[=:][[:space:]]*\$/!s/((PASSWORD|SECRET|TOKEN|KEY)[A-Za-z_]*[=:][[:space:]]*)[^[:space:]].*/\1<MASKIERT>/I' "$BASEFILE"
 echo "----- $(basename "$OVERRIDE") -----"
 [ -f "$OVERRIDE" ] && cat "$OVERRIDE" || echo "(existiert noch nicht)"
 echo "----- $(basename "$ENVFILE") (maskiert) -----"
-sed -E 's/^([[:space:]]*[A-Z_]*(PASSWORD|SECRET|TOKEN|KEY)[A-Z_]*=).*/\1<MASKIERT>/' "$ENVFILE"
+sed -E '/^[[:space:]]*[A-Z_]*(PASSWORD|SECRET|TOKEN|KEY)[A-Z_]*=[[:space:]]*\$/!s/^([[:space:]]*[A-Z_]*(PASSWORD|SECRET|TOKEN|KEY)[A-Z_]*=).*/\1<MASKIERT>/' "$ENVFILE"
 
 getenv() {
   local v; v=$(sed -n "s/^[[:space:]]*$1=//p" "$ENVFILE" | head -n1 | tr -d '\r')
