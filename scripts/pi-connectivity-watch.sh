@@ -29,7 +29,35 @@ INTERVAL="${INTERVAL:-10}"
 # sonst stuende beides in der Zeile. 000 ist die Aussage: keine Verbindung.
 code() { curl -s -o /dev/null -w '%{http_code}' --max-time 3 "$1" 2>/dev/null; }
 
-printf '# Start %s (Intervall %ss)\n' "$(date '+%F %T')" "$INTERVAL" >> "$LOG"
+# Nur eine Instanz - zwei Watcher schreiben sonst abwechselnd in dieselbe
+# Datei und das Protokoll liest sich wie doppelte Messwerte.
+# Ueber eine Sperrdatei, nicht ueber pgrep: pgrep -f zaehlt den eigenen
+# Prozess und einen etwaigen Wrapper gleich mit und meldet dann falschen Alarm.
+LOCK="${LOCK:-/tmp/pi-connectivity-watch.lock}"
+if command -v flock >/dev/null 2>&1; then
+  exec 9>"$LOCK" 2>/dev/null || true
+  if ! flock -n 9; then
+    echo "Es laeuft bereits ein Watcher. Erst beenden:  pkill -f $(basename "$0")" >&2
+    exit 1
+  fi
+fi
+
+# Docker-Zugriff klaeren. Ohne Mitgliedschaft in der Gruppe 'docker' braucht es
+# sudo - sonst bliebe die Health-Spalte dauerhaft auf '?' und taeuschte einen
+# Ausfall vor, den es nicht gibt.
+if docker info >/dev/null 2>&1; then
+  DOCKER_CMD="docker"
+elif sudo -n docker info >/dev/null 2>&1; then
+  DOCKER_CMD="sudo -n docker"
+else
+  DOCKER_CMD=""
+  echo "Hinweis: kein Docker-Zugriff - die Health-Spalte bleibt '?'." >&2
+  echo "         Mit 'sudo ./$(basename "$0")' starten oder sich der Gruppe" >&2
+  echo "         docker hinzufuegen: sudo usermod -aG docker \$USER (dann neu anmelden)." >&2
+fi
+
+printf '# Start %s (Intervall %ss, System laeuft seit %s)\n' \
+  "$(date '+%F %T')" "$INTERVAL" "$(uptime -s 2>/dev/null || echo '?')" >> "$LOG"
 printf '# Zeit     omv immich  link  ip                health(server/ml/pg/redis)\n' >> "$LOG"
 
 while :; do
@@ -46,7 +74,8 @@ while :; do
 
   h=""
   for c in immich_server immich_machine_learning immich_postgres immich_redis; do
-    s=$(docker inspect "$c" --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' 2>/dev/null)
+    s=""
+    [ -n "$DOCKER_CMD" ] && s=$($DOCKER_CMD inspect "$c" --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' 2>/dev/null)
     case "$s" in healthy) h="${h}+";; starting) h="${h}~";; unhealthy) h="${h}!";; "") h="${h}?";; *) h="${h}x";; esac
   done
 
@@ -57,5 +86,8 @@ while :; do
     printf '%s  ^^^ AUFFAELLIG: omv=%s carrier=%s\n' "$ts" "$omv" "$carrier" >> "$LOG"
   fi
 
-  sleep "$INTERVAL"
+  # fd 9 fuer das Kind schliessen: sleep wuerde die Sperre sonst erben und
+  # nach einem Abbruch des Watchers bis zum eigenen Ende weiter halten -
+  # ein Neustart scheiterte dann an einer Sperre, die niemand mehr haelt.
+  sleep "$INTERVAL" 9>&-
 done
