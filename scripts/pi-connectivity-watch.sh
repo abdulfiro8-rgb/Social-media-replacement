@@ -8,6 +8,11 @@
 #   - Immich auf Port 2283
 #   - Link-Status und IP-Adresse von end0
 #   - Health der Immich-Container
+#   - Temperatur, Throttling-Flags und 5V-Schiene des PMIC (Pi 5)
+#   - Load und freier Arbeitsspeicher
+#
+# Jede Zeile wird sofort auf die Platte geschrieben. Bei einem harten Reset
+# gehen gepufferte Zeilen sonst verloren - genau die letzten, die zaehlen.
 #
 # Bleiben die localhost-Werte durchgehend 200, waehrend der Zugriff von aussen
 # aussetzt, liegt es garantiert nicht am Pi.
@@ -58,7 +63,7 @@ fi
 
 printf '# Start %s (Intervall %ss, System laeuft seit %s)\n' \
   "$(date '+%F %T')" "$INTERVAL" "$(uptime -s 2>/dev/null || echo '?')" >> "$LOG"
-printf '# Zeit     omv immich  link  ip                health(server/ml/pg/redis)\n' >> "$LOG"
+printf '# Zeit     omv immich link ip                 health  temp    5V  throttled   load   frei\n' >> "$LOG"
 
 while :; do
   ts=$(date '+%H:%M:%S')
@@ -79,12 +84,36 @@ while :; do
     case "$s" in healthy) h="${h}+";; starting) h="${h}~";; unhealthy) h="${h}!";; "") h="${h}?";; *) h="${h}x";; esac
   done
 
-  printf '%s  %-3s %-6s %s  %-18s %s\n' "$ts" "$omv" "$imm" "$link" "$ip" "$h" >> "$LOG"
+  # --- Hardware-Telemetrie -------------------------------------------------
+  # get_throttled ist die entscheidende Groesse. Die Flags werden bei jedem
+  # Boot zurueckgesetzt, ein Wert aus der Ruhephase sagt also nichts ueber
+  # Lastspitzen. Deshalb wird hier laufend gemessen.
+  thr="-"; temp="-"; v5="-"
+  if command -v vcgencmd >/dev/null 2>&1; then
+    thr=$(vcgencmd get_throttled 2>/dev/null | sed 's/.*=//')
+    temp=$(vcgencmd measure_temp 2>/dev/null | sed "s/temp=//;s/'C//")
+    v5=$(vcgencmd pmic_read_adc EXT5V_V 2>/dev/null | sed 's/.*=//;s/V$//')
+  fi
+  load=$(cut -d' ' -f1 /proc/loadavg 2>/dev/null)
+  memav=$(awk '/MemAvailable/{printf "%.1fG", $2/1048576}' /proc/meminfo 2>/dev/null)
+
+  printf '%s  %-3s %-6s %s  %-18s %s  %5s %6s %8s  %5s %6s\n' \
+    "$ts" "$omv" "$imm" "$link" "$ip" "$h" \
+    "${temp:--}" "${v5:--}" "${thr:--}" "${load:--}" "${memav:--}" >> "$LOG"
 
   # Auffaelligkeiten zusaetzlich markieren
   if [ "$omv" != "200" ] || [ "$carrier" != "1" ]; then
     printf '%s  ^^^ AUFFAELLIG: omv=%s carrier=%s\n' "$ts" "$omv" "$carrier" >> "$LOG"
   fi
+  # Alles ausser 0x0 heisst: Unterspannung oder Drosselung ist aufgetreten.
+  case "$thr" in
+    0x0|-|"") ;;
+    *) printf '%s  ^^^ THROTTLED=%s  <-- Unterspannung/Drosselung!\n' "$ts" "$thr" >> "$LOG" ;;
+  esac
+
+  # Sofort auf die Platte. Ohne das verschluckt ein harter Reset genau die
+  # letzten Zeilen vor dem Absturz - also die einzigen, die die Ursache zeigen.
+  sync -d "$LOG" 2>/dev/null || sync
 
   # fd 9 fuer das Kind schliessen: sleep wuerde die Sperre sonst erben und
   # nach einem Abbruch des Watchers bis zum eigenen Ende weiter halten -

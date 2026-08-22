@@ -471,6 +471,46 @@ Tunnel für Internetverkehr aktiv, lokale Adressen gehen direkt.
 
 ---
 
+## 6c. Der Pi startet beim Hochladen neu
+
+Beobachtung: OMV und Immich sind gemeinsam fuer einige Minuten weg und kommen
+gemeinsam wieder — und zwar reproduzierbar beim Hochladen von Daten.
+Ursache ist nicht ein Dienst, sondern ein **Neustart des Pi unter Last**.
+
+Erkennbar am Watcher-Protokoll: dessen Kopfzeile nennt die Boot-Zeit. Springt
+sie zwischen zwei Laeufen, hat das System neu gestartet.
+
+### Warum das Journal luegt
+
+`journalctl --list-boots` zeigte nur vier Boots, obwohl mehr stattgefunden
+hatten, und es klaffte eine Luecke von 42 Stunden. Bei einem harten Reset
+gehen die noch nicht geschriebenen Journalpuffer verloren. Ein Journal ohne
+Eintraege ist deshalb kein Beweis fuer Ruhe — es ist selbst ein Symptom.
+
+Aus demselben Grund schreibt der Watcher jede Zeile mit `sync -d` sofort auf
+die Platte.
+
+### Warum `throttled=0x0` im Leerlauf nichts beweist
+
+Die Flags von `vcgencmd get_throttled` werden bei jedem Boot zurueckgesetzt.
+Ein Wert aus einer Ruhephase sagt nichts ueber Lastspitzen — und genau beim
+gleichzeitigen Schreiben auf NVMe, CPU-Last und Netzwerkverkehr entsteht der
+Strombedarf, der ein zu schwaches Netzteil in die Knie zwingt. Deshalb misst
+der Watcher `get_throttled`, Temperatur und die 5V-Schiene des PMIC laufend
+mit.
+
+### Die zwei Kandidaten
+
+| Kandidat | Erkennungsmerkmal |
+| --- | --- |
+| **Netzteil zu schwach** | `throttled` wird ungleich `0x0`, `EXT5V_V` faellt unter ~4,8 V. Der Pi 5 braucht 5 V / 5 A (27 W); ein Pi-4-Netzteil mit 15 W reicht mit NVMe nicht. |
+| **NVMe / PCIe instabil** | `throttled` bleibt `0x0`, aber `dmesg` zeigt `nvme`- oder `AER`-Fehler. Abhilfe: PCIe-Geschwindigkeit in `/boot/firmware/config.txt` auf Gen 2 begrenzen. |
+
+Ein Neustart durch Speichermangel (OOM) scheidet aus: der Kernel beendet dann
+einzelne Prozesse, er startet nicht das ganze System neu.
+
+---
+
 ## 7. Offene Nebenbaustellen
 
 * **Twingate-Tokens**: Access- und Refresh-Token wurden früher im Klartext
