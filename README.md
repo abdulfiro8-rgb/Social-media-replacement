@@ -11,6 +11,8 @@ Selbstgehostete Alternativen zu kommerziellen Cloud-Diensten.
 | [`compose/immich/docker-compose.yml`](compose/immich/docker-compose.yml) | Für OMV Compose korrigierte Immich-Compose-Datei |
 | [`compose/immich/example.env`](compose/immich/example.env) | Vorlage für den OMV-Environment-Block (ohne Geheimnisse) |
 | [`scripts/immich-apply-fix.sh`](scripts/immich-apply-fix.sh) | Komplettreparatur in einem Durchgang: Konfiguration zeigen, sichern, `environment:`-Block per YAML-Merge ergänzen, Passwort synchronisieren, neu erstellen, verifizieren |
+| [`scripts/docker-move-dataroot.sh`](scripts/docker-move-dataroot.sh) | Verlegt Dockers Datenverzeichnis vom USB-Systemdatentraeger auf die NVMe (rsync, ohne Löschen) |
+| [`scripts/pi-connectivity-watch.sh`](scripts/pi-connectivity-watch.sh) | Dauerprotokoll: Dienste, Link, Temperatur, 5V, Throttling, Load — jede Zeile sofort auf Platte |
 | [`scripts/immich-diagnose.sh`](scripts/immich-diagnose.sh) | Nur-Lesen-Diagnose, gibt keine Passwörter aus |
 | [`scripts/immich-fix-db-password.sh`](scripts/immich-fix-db-password.sh) | Synchronisiert das Postgres-Passwort und erstellt nur `immich-server` neu |
 | [`scripts/immich-move-db-dir.sh`](scripts/immich-move-db-dir.sh) | Verschiebt das Postgres-Datenverzeichnis aus `UPLOAD_LOCATION` heraus (nur `mv`) und verriegelt den alten Pfad |

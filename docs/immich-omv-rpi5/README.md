@@ -499,7 +499,51 @@ Strombedarf, der ein zu schwaches Netzteil in die Knie zwingt. Deshalb misst
 der Watcher `get_throttled`, Temperatur und die 5V-Schiene des PMIC laufend
 mit.
 
-### Die zwei Kandidaten
+### Gefunden: Watchdog-Reset durch stallenden USB-Systemdatentraeger
+
+Zwei Zeilen aus `dmesg` klaeren den Fall:
+
+```
+EXT4-fs (sda2): orphan cleanup on readonly fs
+systemd[1]: Watchdog running with a hardware timeout of 14s.
+```
+
+Das Root-Dateisystem liegt auf `/dev/sda2` — einem USB-Flash-Speicher
+(`Attached SCSI removable disk`, `Write cache: disabled`). Die NVMe traegt nur
+die OMV-Datenpartition. Dockers Datenverzeichnis `/var/lib/docker` liegt damit
+auf dem Stick, und das ist die schreibintensivste Stelle des Systems.
+
+Die Kette:
+
+1. Upload → Docker schreibt massiv auf den USB-Stick.
+2. Der Flash-Speicher stallt unter Dauerlast laenger als 14 Sekunden.
+3. systemd kann den Hardware-Watchdog nicht mehr bedienen → harter Reset.
+4. Der Reset verwirft die Journalpuffer → fehlende Boots, Luecken im Journal.
+5. Beim naechsten Start `orphan cleanup` — die Signatur des unsauberen Aushaengens.
+
+Gegenprobe mit dem Watcher waehrend des Hochlaufs: `throttled=0x0` durchgehend,
+5V zwischen 5,01 und 5,08 V, maximal 58,7 °C — aber **Load 10,4 auf vier
+Kernen**. Kein Strom-, kein Hitze-, kein Speicherproblem. Alles wartet auf E/A.
+
+`dd` mit 8 GB auf die NVMe lief mit 430 MB/s durch, ohne jede Stoerung. Das
+trennt die beiden Datentraeger sauber: die NVMe ist gesund, der Stick ist es
+nicht.
+
+### Abhilfe
+
+```bash
+sudo ./scripts/docker-move-dataroot.sh --to /srv/dev-disk-by-uuid-XXXX/docker
+```
+
+Verlegt `/var/lib/docker` per `rsync -aHAX` auf die NVMe und stellt `data-root`
+in `/etc/docker/daemon.json` um. Nichts wird geloescht; das alte Verzeichnis
+bleibt als `.alt-<Zeitstempel>` liegen.
+
+Die eigentliche Loesung bleibt, das ganze System von der NVMe zu booten — der
+Pi 5 kann das. Ein USB-Flash-Speicher ist als Systemdatentraeger fuer einen
+Server ohnehin die falsche Wahl.
+
+### Die zwei zunaechst verfolgten Kandidaten
 
 | Kandidat | Erkennungsmerkmal |
 | --- | --- |
