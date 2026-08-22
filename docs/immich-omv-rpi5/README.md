@@ -543,6 +543,37 @@ Die eigentliche Loesung bleibt, das ganze System von der NVMe zu booten — der
 Pi 5 kann das. Ein USB-Flash-Speicher ist als Systemdatentraeger fuer einen
 Server ohnehin die falsche Wahl.
 
+### Ergebnis des Umzugs
+
+```
+Docker-Daten: /srv/dev-disk-by-uuid-.../docker
+findmnt      : /dev/nvme0n1p1
+alle Container healthy, auch die stackfremden
+```
+
+7,8 GB kopiert. Die vorhandene Log-Rotation in der daemon.json blieb erhalten,
+weil das Skript die Datei zusammenfuehrt statt sie zu ersetzen.
+
+### Danach: 4 GB RAM sind die naechste Grenze
+
+```
+Mem:  4.0Gi  used 2.4Gi  available 1.6Gi
+Swap: 2.0Gi (zram, komprimierter RAM)  used 213Mi
+```
+
+Im Leerlauf. Beim ersten grossen Import laufen ML-Inferenz,
+Thumbnail-Erzeugung und Datenbankschreibvorgaenge gleichzeitig — dafuer sind
+1,6 GB knapp. Empfehlung fuer den Erstimport, in Immich unter
+*Administration → Einstellungen*:
+
+* **Maschinelles Lernen** voruebergehend deaktivieren (intelligente Suche und
+  Gesichtserkennung). Nach dem Import wieder einschalten und die Analyse ueber
+  Nacht nachlaufen lassen.
+* **Job-Nebenlaeufigkeit** auf 1 setzen, besonders bei Thumbnail-Erzeugung und
+  Videotranskodierung.
+
+Das kostet Zeit, aber Zeit ist beim einmaligen Import das billigste Gut.
+
 ### Die zwei zunaechst verfolgten Kandidaten
 
 | Kandidat | Erkennungsmerkmal |
